@@ -19,7 +19,7 @@ option(USE_LEVELDB "" OFF)
 option(USE_LMDB "" OFF)
 add_subdirectory(caffe)
 include_directories("${Caffe_SOURCE_DIR}/include"
-                    "${Caffe_BINARY_DIR}/include") # caffe.pb.h 
+                    "${Caffe_BINARY_DIR}/include/caffe/proto") # caffe.pb.h 
 
 # Copy Caffe's preprocessor defines to configure Caffe's internal headers 
 get_directory_property(CAFFE_DEFINITIONS DIRECTORY caffe COMPILE_DEFINITIONS)
