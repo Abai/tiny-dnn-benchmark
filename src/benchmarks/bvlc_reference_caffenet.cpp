@@ -44,6 +44,8 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
   virtual ~BVLCReferenceCaffenet() {}
 
   static void SetUpTestCase() {
+    std::cout << "Loading Caffe net and converting to tiny-dnn ..."
+              << std::endl;
     // Load caffe net
     sCaffeNet.reset(new Net<float>(proto_path, TEST));
     sCaffeNet->CopyTrainedLayersFrom(model_path);
