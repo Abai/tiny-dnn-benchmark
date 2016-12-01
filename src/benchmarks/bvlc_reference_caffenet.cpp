@@ -10,6 +10,7 @@
 #include "caffe/caffe.hpp"
 
 #include "tiny_dnn/tiny_dnn.h"
+#include "tiny_dnn/io/caffe/layer_factory.h"
 
 using namespace caffe;
 using namespace tiny_dnn;
@@ -31,6 +32,9 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
  public:
 
   BVLCReferenceCaffenet() {
+    // Disable caffe output
+    FLAGS_minloglevel = 2;
+
     // Initialization happens once per run
     if(!sIsInit) {
       SetUpTestCase();
@@ -40,146 +44,90 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
   virtual ~BVLCReferenceCaffenet() {}
 
   static void SetUpTestCase() {
-    // Read Caffe's model prototxt file and upgrade if needed
-    sProto.reset(new NetParameter());
-    ReadNetParamsFromTextFileOrDie(proto_path, sProto.get());
-
-    // Read Caffe's binary model file and upgrade if needed
-    sWeights.reset(new NetParameter());
-    ReadNetParamsFromBinaryFileOrDie(model_path, sWeights.get());
-
     // Load caffe net
     sCaffeNet.reset(new Net<float>(proto_path, TEST));
     sCaffeNet->CopyTrainedLayersFrom(model_path);
 
-    //// Perform one forward pass to fill blobs
+    // Perform one forward pass to fill blobs
     sCaffeNet->Forward();
+
+    // Convert Caffe net to tiny-dnn layers
+    sTinyDNNLayers.push_back(nullptr); // skip ImageData layer
+    for(unsigned int i = 1; i < sCaffeNet->layers().size(); ++i) { 
+      sTinyDNNLayers.push_back(getTinyDNNLayer(i));
+    } 
 
     sIsInit = true;
   }
 
-  std::shared_ptr<layer> getTinyDNNLayer(int i) {
+  static std::shared_ptr<layer> getTinyDNNLayer(int i) {
     // Retrieve caffe layer and top and bottom blobs
     auto caffe_layer = sCaffeNet->layers().at(i);
     auto bottom_blob = sCaffeNet->bottom_vecs().at(i).at(0);
     auto top_blob = sCaffeNet->top_vecs().at(i).at(0);
 
-    // Determine layer input and output dimensions
-    cnn_size_t in_num = bottom_blob->shape(0);  
-    cnn_size_t in_channels = bottom_blob->shape(1);  
-    cnn_size_t in_height = bottom_blob->shape(2);  
-    cnn_size_t in_width = bottom_blob->shape(3);  
-    cnn_size_t out_num = top_blob->shape(0);  
-    cnn_size_t out_channels = top_blob->shape(1);  
-    cnn_size_t out_height = top_blob->shape(2);  
-    cnn_size_t out_width = top_blob->shape(3);  
+    // Validate caffe input and output blob dimensions 
+    assert(bottom_blob->num_axes() <= 4);
+    assert(top_blob->num_axes() <= 4);
 
-    //std::cerr << i << "\tInput: " << bottom_blob->shape_string() << std::endl;
-    //std::cerr << "\tOutput: " << top_blob->shape_string() << std::endl;
+    // Convert Caffe input shape to tiny_dnn::shape3d
+    cnn_size_t in_num = 1; // 4th axis unused in tiny_dnn
+    shape_t in_shape(1, 1, 1); 
+    std::vector<cnn_size_t*> in_tiny_shape =
+      { &in_shape.width_,  &in_shape.height_, &in_shape.depth_, &in_num };  
+    int in_vec_idx = 0;
+    std::vector<int> in_caffe_shape = bottom_blob->shape();
+    for(std::vector<int>::reverse_iterator it = in_caffe_shape.rbegin();
+        it != in_caffe_shape.rend(); ++it) { // reverse for over caffe shape 
+      *in_tiny_shape.at(in_vec_idx++) = *it; 
+    }
 
-    // Convert Caffe layer to tiny-dnn layer
-    std::shared_ptr<layer> tiny_dnn_layer;
-    std::string layer_type = caffe_layer->type();
-    if(layer_type == "Convolution") {
-      // Retrieve Caffe's layer parameters 
-      auto c = caffe_layer->layer_param().convolution_param();
+    // Convert Caffe output shape to tiny_dnn::shape3d
+    cnn_size_t out_num = 1; // 4th axis unused in tiny_dnn
+    shape_t out_shape(1, 1, 1); 
+    std::vector<cnn_size_t*> out_tiny_shape =
+      { &out_shape.width_,  &out_shape.height_, &out_shape.depth_, &out_num };  
+    int out_vec_idx = 0;
+    std::vector<int> out_caffe_shape = top_blob->shape();
+    for(std::vector<int>::reverse_iterator it = out_caffe_shape.rbegin();
+        it != out_caffe_shape.rend(); ++it) { // reverse for over caffe shape 
+      *out_tiny_shape.at(out_vec_idx++) = *it; 
+    }
 
-      // Determine kernel width and height
-      cnn_size_t window_width = c.has_kernel_w() ? c.kernel_w() : c.kernel_size(0); 
-      cnn_size_t window_height = c.has_kernel_h() ? c.kernel_h() : c.kernel_size(0); 
+    // Save caffe output dimensions for later validation
+    cnn_size_t out_channels = out_shape.depth_;
+    cnn_size_t out_height = out_shape.height_;
+    cnn_size_t out_width = out_shape.width_;
 
-      // Determine stride
-      cnn_size_t w_stride = c.has_stride_w() ? c.stride_w() : 1;
-      cnn_size_t h_stride = c.has_stride_h() ? c.stride_h() : 1;
-      assert(c.stride_size() < 3); // only 2D data
-      if(c.stride_size() > 0) { 
-        if(c.stride_size() == 1) { // c.stride_size() == 1
-          w_stride = h_stride = c.stride(0);
-        } else {                   // c.stride_size() == 2
-          h_stride = c.stride(0);
-          w_stride = c.stride(1);
-        }
+    // Copy Caffe proto layer parameter
+    caffe::LayerParameter layer_param;
+    layer_param.CopyFrom(caffe_layer->layer_param());
+
+    // Insert weight and bias blobs into layer param
+    for(auto blob : caffe_layer->blobs()) {
+      // Add BlobProto to layer paramters
+      auto blob_proto = layer_param.add_blobs(); 
+      // Add BlobShape to BlobProto 
+      auto blob_shape = blob_proto->mutable_shape();
+      for(int dim : blob->shape()) {
+        blob_shape->add_dim(dim);
       }
-
-      // Determine padding
-      cnn_size_t w_pad = c.has_pad_w() ? c.pad_w() : 0;
-      cnn_size_t h_pad = c.has_pad_h() ? c.pad_h() : 0;
-      assert(c.pad_size() < 3); // only 2D data
-      if(c.pad_size() > 0) { 
-        if(c.pad_size() == 1) { // c.pad_size() == 1
-          w_pad = h_pad = c.pad(0);
-        } else { 		// c.pad_size() == 2
-          h_pad = c.pad(0);
-          w_pad = c.pad(1);
-        }
-      }
-      
-      // Check if padding supported by tiny-dnn
-      assert(w_pad == h_pad);
-      assert(w_pad == 0 || w_pad == (window_width - 1) / 2);
-
-      // Convert padding to tiny-dnn::padding
-      padding pad_type;
-      if(w_pad == 0) {
-        pad_type = padding::valid;
-      } else { // w_pad = (windows_width - 1) / 2)
-        pad_type = padding::same;
-      }
-
-      // Determine whether layer has bias
-      bool has_bias = c.bias_term();
-
-      // Validate number of outputs versus blob dimension 
-      assert(out_channels == c.num_output());
-
-      // Allocate tiny-dnn layer
-      tiny_dnn_layer =
-        std::make_shared<convolutional_layer<identity> >(in_width,
-                                                         in_height,
-                                                         window_width,
-                                                         window_height,
-                                                         in_channels,
-                                                         out_channels,
-                                                         pad_type,
-                                                         has_bias,
-                                                         w_stride,
-                                                         h_stride);
-     
-      // Determine connection table
-      connection_table table;
-       if(c.has_group()) {
-        table = connection_table(c.group(), in_channels, out_channels);
-      }
-
-      vec_t & b = *tiny_dnn_layer->weights()[1];
-
-      // Fill weights
-      int dst_idx = 0;
-      int src_idx = 0;
-      vec_t & w = *tiny_dnn_layer->weights()[0];
-      auto weights = caffe_layer->blobs().at(0);
-      for(int o = 0; o < out_channels; ++o) {
-        for(int i = 0; i < in_channels; ++i) {
-          if(!table.is_connected(o, i)) {
-            dst_idx += window_width * window_height;
-            continue;
-          }
-          for(int x = 0; x < window_width * window_height; ++x) {
-            w[dst_idx++] =  weights->cpu_data()[src_idx++];
-          }
-        }
-      }
-
-      // Fill bias
-      if(has_bias) {
-        auto bias = caffe_layer->blobs().at(1);
-        for(int o = 0; o < out_channels; o++) {
-          b[o] = bias->cpu_data()[0];
-        }
+      // Add float weights to BlobProto
+      for(int i = 0; i < blob->count(); ++i) {
+        blob_proto->add_data(blob->cpu_data()[i]);
       }
     }
 
-    // Load input into tiny-dnn layer 
+    // Convert Caffe's layer proto parameters to tiny-dnn layer
+    std::shared_ptr<layer> tiny_dnn_layer =
+      detail::create(layer_param, in_shape, &out_shape);
+
+    // Validate output dimentions
+    assert( out_shape.depth_ == out_channels &&
+            out_shape.height_ == out_height &&
+            out_shape.width_ == out_width );
+
+    // Load input data into tiny-dnn layer 
     tiny_dnn_layer->set_in_data(
       std::vector<tensor_t>{
         std::vector<vec_t>{ vec_t(bottom_blob->cpu_data(),
@@ -188,21 +136,29 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
     return tiny_dnn_layer;
   }
 
-  bool validateLayerOutput(int i, std::vector<tensor_t> & out_data) {
-    // TODO(Abai) : Examine differences between caffe and tiny-dnn output
-    //auto top_caffe = sCaffeNet->top_vecs().at(i).at(0);
-    //auto top_tiny_dnn = out_data.at(0).at(0);
-    //float threshold = 0.01f;
-    //for(int i = 0; i < top_caffe->count(); ++i) {
-    //  float diff = std::abs(top_tiny_dnn.at(i) - top_caffe->cpu_data()[i]);
-    //  if(diff > threshold) {
-    //    std::cerr << "Warning: Difference between output blobs caffe="
-    //              << top_caffe->cpu_data()[i] << " and tiny-dnn="
-    //              << top_tiny_dnn.at(i) << " is larger than "
-    //              << threshold <<  std::endl;
-    //    //return false;
-    //  }
-    //}
+  bool validateLayerOutput(int idx) {
+    // TODO(Abai) : Examine differences between caffe and tiny-dnn for these 
+    // layers. Remove if statment when fixed.
+    auto l = sTinyDNNLayers.at(idx);
+    if(l->layer_type() == "conv" ||
+       l->layer_type() == "norm") {
+      return true;
+    }
+    auto out_data = l->output();
+    auto top_caffe = sCaffeNet->top_vecs().at(idx).at(0);
+    auto top_tiny_dnn = out_data.at(0).at(0);
+    float threshold = 0.0001f;
+    for(int i = 0; i < top_caffe->count(); ++i) {
+      float diff = std::abs(top_tiny_dnn.at(i) - top_caffe->cpu_data()[i]);
+      if(diff > threshold) {
+        std::cerr << "Warning: Difference between output of layer index="
+                  << idx << " with type=" << l->layer_type() << " at blob "
+                  << "index=" << i << " caffe=" << top_caffe->cpu_data()[i]
+                  << " and tiny-dnn=" << top_tiny_dnn.at(i)
+                  << " is larger than threshold=" << threshold <<  std::endl;
+        //return false;
+      }
+    }
     return true;
   }
 
@@ -212,6 +168,7 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
   static std::unique_ptr<NetParameter> sWeights;
 
   static std::unique_ptr<Net<float>> sCaffeNet;
+  static std::vector<std::shared_ptr<layer> > sTinyDNNLayers;
 };
 
 bool BVLCReferenceCaffenet::sIsInit = false;
@@ -219,6 +176,7 @@ std::unique_ptr<NetParameter> BVLCReferenceCaffenet::sProto;
 std::unique_ptr<NetParameter> BVLCReferenceCaffenet::sWeights; 
 
 std::unique_ptr<Net<float>> BVLCReferenceCaffenet::sCaffeNet;
+std::vector<std::shared_ptr<layer> > BVLCReferenceCaffenet::sTinyDNNLayers;
 
 
 static void CaffeLayers(benchmark::internal::Benchmark* b) {
@@ -239,8 +197,7 @@ BENCHMARK_DEFINE_F(BVLCReferenceCaffenet, CaffeLayerTest)(
     assert( bottom_vec.size() == 1u );
     state.ResumeTiming();
 
-    std::string bla = "hi";
-    //layer->Forward(bottom_vec, top_vec);
+    layer->Forward(bottom_vec, top_vec);
   }
 }
 
@@ -249,21 +206,19 @@ BENCHMARK_DEFINE_F(BVLCReferenceCaffenet, TinyDNNLayerTest)(
   while (state.KeepRunning()) {
     state.PauseTiming();
     int i = state.range(0);
-    // Convert caffe layer and blobs to tiny-dnn format
-    auto layer = getTinyDNNLayer(i); 
+    auto layer = sTinyDNNLayers.at(i);
     state.ResumeTiming();
 
     layer->forward();
 
     state.PauseTiming();
       // Validate results
-      auto out_data = layer->output();
-      assert(validateLayerOutput(i, out_data) == true);
+      assert(validateLayerOutput(i) == true);
     state.ResumeTiming();
   }
 }
 
-//BENCHMARK_REGISTER_F(BVLCReferenceCaffenet, CaffeLayerTest)->Apply(CaffeLayers);
+BENCHMARK_REGISTER_F(BVLCReferenceCaffenet, CaffeLayerTest)->Apply(CaffeLayers);
 BENCHMARK_REGISTER_F(BVLCReferenceCaffenet, TinyDNNLayerTest)->Apply(CaffeLayers);
 
 }  // namespace
