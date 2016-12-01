@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6.2)
+cmake_minimum_required(VERSION 3.5.1)
 project(tiny-dnn-benchmark)
 
 # Enable c++11 support
