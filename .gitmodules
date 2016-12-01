@@ -4,3 +4,6 @@
 [submodule "src/tiny-dnn"]
 	path = src/tiny-dnn
 	url = https://github.com/tiny-dnn/tiny-dnn.git
+[submodule "src/google-benchmark"]
+	path = src/google-benchmark
+	url = https://github.com/google/benchmark.git
