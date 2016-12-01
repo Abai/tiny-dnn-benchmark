@@ -73,9 +73,9 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
     assert(top_blob->num_axes() <= 4);
 
     // Convert Caffe input shape to tiny_dnn::shape3d
-    cnn_size_t in_num = 1; // 4th axis unused in tiny_dnn
+    serial_size_t in_num = 1; // 4th axis unused in tiny_dnn
     shape_t in_shape(1, 1, 1); 
-    std::vector<cnn_size_t*> in_tiny_shape =
+    std::vector<serial_size_t*> in_tiny_shape =
       { &in_shape.width_,  &in_shape.height_, &in_shape.depth_, &in_num };  
     int in_vec_idx = 0;
     std::vector<int> in_caffe_shape = bottom_blob->shape();
@@ -85,9 +85,9 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
     }
 
     // Convert Caffe output shape to tiny_dnn::shape3d
-    cnn_size_t out_num = 1; // 4th axis unused in tiny_dnn
+    serial_size_t out_num = 1; // 4th axis unused in tiny_dnn
     shape_t out_shape(1, 1, 1); 
-    std::vector<cnn_size_t*> out_tiny_shape =
+    std::vector<serial_size_t*> out_tiny_shape =
       { &out_shape.width_,  &out_shape.height_, &out_shape.depth_, &out_num };  
     int out_vec_idx = 0;
     std::vector<int> out_caffe_shape = top_blob->shape();
@@ -97,9 +97,9 @@ class BVLCReferenceCaffenet : public ::benchmark::Fixture {
     }
 
     // Save caffe output dimensions for later validation
-    cnn_size_t out_channels = out_shape.depth_;
-    cnn_size_t out_height = out_shape.height_;
-    cnn_size_t out_width = out_shape.width_;
+    serial_size_t out_channels = out_shape.depth_;
+    serial_size_t out_height = out_shape.height_;
+    serial_size_t out_width = out_shape.width_;
 
     // Copy Caffe proto layer parameter
     caffe::LayerParameter layer_param;
