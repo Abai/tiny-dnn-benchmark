@@ -4,7 +4,7 @@ A tiny-dnn forward-pass benchmark implemented using **google-benchmark** library
 
 Works on **OSX** and **Ubuntu** out of the box. Uses CMake so you should be able to get it to work on Windows too.
 
-Here is an example output of tiny-dnn tiny-dnn/tiny-dnn@bc834c9 and Caffe BVLC/caffe@24d2f67 on [1st of December 2016](https://gist.github.com/Abai/273fe51faadb77807b79879507fe945a)
+Here is an example output of tiny-dnn/tiny-dnn@bc834c9 and BVLC/caffe@24d2f67 on [1st of December 2016](https://gist.github.com/Abai/273fe51faadb77807b79879507fe945a)
 
 ## Installing dependencies on Ubuntu
 
