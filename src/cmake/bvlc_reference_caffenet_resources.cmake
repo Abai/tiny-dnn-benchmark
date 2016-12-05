@@ -11,18 +11,22 @@ set(TEST_IMAGE_PATH "${CMAKE_SOURCE_DIR}/caffe/examples/images/cat.jpg")
 if(NOT EXISTS ${MODEL_MEAN_PATH})
   message(STATUS "Downloading imagenet_mean.binaryproto ...")
   execute_process(COMMAND ${CMAKE_SOURCE_DIR}/caffe/data/ilsvrc12/get_ilsvrc_aux.sh)
-  if(NOT EXISTS ${MODEL_MEAN_PATH})
-    message(FATAL_ERROR "Failed to download imagenet_mean.binaryproto to ${MODEL_MEAN_PATH}")
-  endif()
+endif()
+
+# Validate imagenet_mean is found 
+if(NOT EXISTS ${MODEL_MEAN_PATH})
+  message(FATAL_ERROR "Failed to download imagenet_mean.binaryproto to ${MODEL_MEAN_PATH}")
 endif()
 
 # Download bvlc_reference_caffenet model if required
 if(NOT EXISTS ${MODEL_PATH})
   message(STATUS "Downloading bvlc_reference_caffenet.caffemodel ...")
   execute_process(COMMAND ${CMAKE_SOURCE_DIR}/caffe/scripts/download_model_binary.py ${CMAKE_SOURCE_DIR}/caffe/models/bvlc_reference_caffenet)
-  if(NOT EXISTS ${MODEL_PATH})
+endif()
+
+# Validate bvlc_reference_caffenet model is found 
+if(NOT EXISTS ${MODEL_PATH})
     message(FATAL_ERROR "Failed to download bvlc_reference_caffenet.caffemodel to ${MODEL_PATH}")
-  endif()
 else()
   add_definitions(-DMODEL_PATH="${MODEL_PATH}")
 endif()
