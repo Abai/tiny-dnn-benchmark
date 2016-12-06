@@ -13,3 +13,4 @@ Assuming you are in the *build* folder
 
 ## Example output:
 
+[6th of December 2016](https://gist.github.com/Abai/273fe51faadb77807b79879507fe945a)
