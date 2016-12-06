@@ -13,14 +13,14 @@ Tested on Ubuntu 16.04
 It seems that google-benchmark currently has issues compiling on Ubuntu 16.04 with GCC 5.4.0. Therefore I would recommend to us clang-3.8:
 
 ```
-sudo apt-get install build-essential clang
+sudo apt-get install -y build-essential clang
 ```
 
 Now install the rest of dependencies
 
 ```
-sudo apt-get install cmake libopencv-dev libhdf5-serial-dev libgflags-dev libgoogle-glog-dev libprotobuf-dev protobuf-compiler libatlas-base-dev libtbb-dev python-yaml
-sudo apt-get install --no-install-recommends libboost-all-dev
+sudo apt-get install -y cmake libopencv-dev libhdf5-serial-dev libgflags-dev libgoogle-glog-dev libprotobuf-dev protobuf-compiler libatlas-base-dev libtbb-dev python-yaml
+sudo apt-get install -y --no-install-recommends libboost-all-dev
 ```
 
 ## Compilation on Ubuntu
