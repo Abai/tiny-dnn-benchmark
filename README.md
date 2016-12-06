@@ -67,9 +67,10 @@ brew tap homebrew/science
 brew install cmake opencv hdf5 gflags glog protobuf tbb boost
 ```
 
-Caffe scripts require python-yaml to download the models:
+Caffe scripts require python-yaml and wget to download the models:
 
 ```
+brew install wget
 sudo easy-install pip
 sudo pip install pyyaml
 ```
