@@ -190,34 +190,32 @@ static void CaffeLayers(benchmark::internal::Benchmark* b) {
 
 BENCHMARK_DEFINE_F(BVLCReferenceCaffenet, CaffeLayerTest)(
   benchmark::State& state) {
-  while (state.KeepRunning()) {
-    state.PauseTiming();
-    int i = state.range(0);
-    auto layer = sCaffeNet->layers().at(i);
-    auto bottom_vec = sCaffeNet->bottom_vecs().at(i);
-    auto top_vec = sCaffeNet->top_vecs().at(i);
-    assert( bottom_vec.size() == 1u );
-    state.ResumeTiming();
+  // Get Caffe layer and input/output blobs
+  int i = state.range(0);
+  auto layer = sCaffeNet->layers().at(i);
+  auto bottom_vec = sCaffeNet->bottom_vecs().at(i);
+  auto top_vec = sCaffeNet->top_vecs().at(i);
+  assert( bottom_vec.size() == 1u );
 
+  // Benchmark Caffe layer using input/output blobs
+  while (state.KeepRunning()) {
     layer->Forward(bottom_vec, top_vec);
   }
 }
 
 BENCHMARK_DEFINE_F(BVLCReferenceCaffenet, TinyDNNLayerTest)(
   benchmark::State& state) {
+  // Get tiny-dnn layer with loaded input data
+  int i = state.range(0);
+  auto layer = sTinyDNNLayers.at(i);
+
+  // Benchmark tiny-dnn layer
   while (state.KeepRunning()) {
-    state.PauseTiming();
-    int i = state.range(0);
-    auto layer = sTinyDNNLayers.at(i);
-    state.ResumeTiming();
-
     layer->forward();
-
-    state.PauseTiming();
-      // Validate results
-      assert(validateLayerOutput(i) == true);
-    state.ResumeTiming();
   }
+
+  // Validate results versus Caffe output
+  assert(validateLayerOutput(i) == true);
 }
 
 BENCHMARK_REGISTER_F(BVLCReferenceCaffenet, CaffeLayerTest)->Apply(CaffeLayers);
